@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+backend/node_modules/
+
+# Environment files
+.env
+.env.*
+.env*.local
+!.env.example
+!backend/.env.example
+
+# Build outputs
+dist/
+backend/dist/
+web-build/
+expo-env.d.ts
+*.tsbuildinfo
+
+# Expo & Metro
+.expo/
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Native credentials
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+/ios
+/android
+
+# Uploaded test media
+backend/uploads/*
+!backend/uploads/.gitkeep
+!backend/uploads/**/.gitkeep
+
+# Database backups & logs
+*.sql
+*.log
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+Thumbs.db
