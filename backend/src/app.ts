@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import path from "path";
+import fs from "fs";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 
@@ -28,6 +29,7 @@ const app = express();
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: false,
   })
 );
 
@@ -104,6 +106,42 @@ app.use("/api/appointments", appointmentRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/timeline", timelineRoutes);
 app.use("/api/care-intelligence", careIntelligenceRoutes);
+
+// Locate and serve Expo web static production export
+const candidateWebDirs = [
+  path.resolve(__dirname, "../../dist"),
+  path.resolve(process.cwd(), "../dist"),
+  path.resolve(process.cwd(), "dist"),
+  path.resolve(__dirname, "../dist"),
+];
+
+const clientDistDir = candidateWebDirs.find(
+  (dir) => fs.existsSync(dir) && fs.existsSync(path.join(dir, "index.html"))
+);
+
+if (clientDistDir) {
+  // Pre-load index.html for instant SPA fallback without filesystem traversal latency
+  const indexHtmlPath = path.join(clientDistDir, "index.html");
+  const indexHtmlContent = fs.readFileSync(indexHtmlPath, "utf-8");
+
+  // Serve static assets from Expo export (JS bundles, CSS, images, fonts)
+  app.use(express.static(clientDistDir, { dotfiles: "allow" }));
+
+  // SPA fallback routing: serve index.html for non-API/non-upload GET requests
+  app.use((req, res, next) => {
+    if (
+      req.method === "GET" &&
+      !req.path.startsWith("/api") &&
+      !req.path.startsWith("/uploads")
+    ) {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.send(indexHtmlContent);
+    }
+    next();
+  });
+} else {
+  console.warn("[SmritiCare] No frontend dist directory found with index.html");
+}
 
 // Central error handler
 app.use(errorHandler);

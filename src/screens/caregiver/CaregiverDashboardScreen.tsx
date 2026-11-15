@@ -31,6 +31,21 @@ import {
   getSharedTimeline,
   TimelineEvent,
 } from "../../services/timeline.service";
+import {
+  Medication,
+  AdherenceStats,
+  getMedications,
+  createMedication,
+  getAdherenceStats,
+  discontinueMedication,
+} from "../../services/medication.service";
+import {
+  Appointment,
+  getUpcomingAppointments,
+  getAppointmentHistory,
+  createAppointment,
+  cancelAppointment,
+} from "../../services/appointment.service";
 
 const COLORS = {
   background: "#FBF9F1",
@@ -322,6 +337,192 @@ export default function CaregiverDashboardScreen({
       showMessage("Error", err.message || "Failed to load activity timeline");
     } finally {
       setLoadingTimeline(false);
+    }
+  };
+
+  // Medications & Adherence Modal State
+  const [showMedicationModal, setShowMedicationModal] = useState(false);
+  const [medications, setMedications] = useState<Medication[]>([]);
+  const [adherenceStats, setAdherenceStats] = useState<AdherenceStats | null>(null);
+  const [loadingMedications, setLoadingMedications] = useState(false);
+  const [showAddMedModal, setShowAddMedModal] = useState(false);
+  const [savingMed, setSavingMed] = useState(false);
+  const [medName, setMedName] = useState("");
+  const [medDosage, setMedDosage] = useState("");
+  const [medUnit, setMedUnit] = useState("mg");
+  const [medFrequency, setMedFrequency] = useState("ONCE_DAILY");
+  const [medFoodTiming, setMedFoodTiming] = useState("AFTER_FOOD");
+  const [medTimes, setMedTimes] = useState("08:00");
+  const [medDoctor, setMedDoctor] = useState("");
+  const [medInstructions, setMedInstructions] = useState("");
+
+  // Doctor Appointments Modal State
+  const [showApptsModal, setShowApptsModal] = useState(false);
+  const [upcomingAppts, setUpcomingAppts] = useState<Appointment[]>([]);
+  const [apptHistory, setApptHistory] = useState<Appointment[]>([]);
+  const [loadingAppts, setLoadingAppts] = useState(false);
+  const [showAddApptModal, setShowAddApptModal] = useState(false);
+  const [savingAppt, setSavingAppt] = useState(false);
+  const [apptDoctor, setApptDoctor] = useState("");
+  const [apptHospital, setApptHospital] = useState("");
+  const [apptDepartment, setApptDepartment] = useState("");
+  const [apptDate, setApptDate] = useState(
+    new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  );
+  const [apptTime, setApptTime] = useState("10:00");
+  const [apptReason, setApptReason] = useState("");
+  const [apptNotes, setApptNotes] = useState("");
+
+  const handleOpenMedications = async () => {
+    if (patients.length === 0) {
+      showMessage("No Connected Patients", "Connect a patient to manage prescriptions and view adherence records.");
+      return;
+    }
+    const targetPatient = patients[0];
+    setShowMedicationModal(true);
+    setLoadingMedications(true);
+    try {
+      const [meds, stats] = await Promise.all([
+        getMedications(targetPatient.id),
+        getAdherenceStats("monthly", targetPatient.id).catch(() => null),
+      ]);
+      setMedications(meds);
+      setAdherenceStats(stats);
+    } catch (err: any) {
+      showMessage("Error", err.message || "Failed to load patient medications");
+    } finally {
+      setLoadingMedications(false);
+    }
+  };
+
+  const handleAddMedication = async () => {
+    if (!medName.trim() || !medDosage.trim()) {
+      showMessage("Validation", "Please provide medicine name and dosage.");
+      return;
+    }
+    if (patients.length === 0) return;
+    const targetPatient = patients[0];
+    setSavingMed(true);
+    try {
+      const scheduledTimes = medTimes
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      await createMedication({
+        patientId: targetPatient.id,
+        name: medName.trim(),
+        dosage: medDosage.trim(),
+        unit: medUnit,
+        frequency: medFrequency,
+        scheduledTimes: scheduledTimes.length > 0 ? scheduledTimes : ["08:00"],
+        startDate: new Date(),
+        foodTiming: medFoodTiming,
+        prescribingDoctor: medDoctor.trim() || undefined,
+        instructions: medInstructions.trim() || undefined,
+      });
+      showMessage("Success", "Medication added and doses scheduled successfully.");
+      setShowAddMedModal(false);
+      setMedName("");
+      setMedDosage("");
+      setMedDoctor("");
+      setMedInstructions("");
+      const meds = await getMedications(targetPatient.id);
+      setMedications(meds);
+    } catch (err: any) {
+      showMessage("Error", err.message || "Failed to add medication");
+    } finally {
+      setSavingMed(false);
+    }
+  };
+
+  const handleDiscontinueMedication = async (medId: string) => {
+    if (patients.length === 0) return;
+    const targetPatient = patients[0];
+    try {
+      await discontinueMedication(medId, targetPatient.id);
+      showMessage("Discontinued", "Medication has been discontinued.");
+      const meds = await getMedications(targetPatient.id);
+      setMedications(meds);
+    } catch (err: any) {
+      showMessage("Error", err.message || "Failed to discontinue medication");
+    }
+  };
+
+  const handleOpenAppointments = async () => {
+    if (patients.length === 0) {
+      showMessage("No Connected Patients", "Connect a patient to manage and view doctor appointments.");
+      return;
+    }
+    const targetPatient = patients[0];
+    setShowApptsModal(true);
+    setLoadingAppts(true);
+    try {
+      const [upcoming, history] = await Promise.all([
+        getUpcomingAppointments(targetPatient.id),
+        getAppointmentHistory(targetPatient.id).catch(() => []),
+      ]);
+      setUpcomingAppts(upcoming);
+      setApptHistory(history);
+    } catch (err: any) {
+      showMessage("Error", err.message || "Failed to load doctor appointments");
+    } finally {
+      setLoadingAppts(false);
+    }
+  };
+
+  const handleAddAppointment = async () => {
+    if (!apptDoctor.trim() || !apptHospital.trim() || !apptReason.trim()) {
+      showMessage("Validation", "Please provide doctor name, clinic/hospital, and reason for visit.");
+      return;
+    }
+    if (patients.length === 0) return;
+    const targetPatient = patients[0];
+    setSavingAppt(true);
+    try {
+      const appointmentDate = new Date(`${apptDate}T${apptTime || "10:00"}:00`).toISOString();
+      await createAppointment({
+        patientId: targetPatient.id,
+        doctorName: apptDoctor.trim(),
+        hospital: apptHospital.trim(),
+        department: apptDepartment.trim() || undefined,
+        appointmentDate,
+        reason: apptReason.trim(),
+        notes: apptNotes.trim() || undefined,
+      });
+      showMessage("Success", "Doctor appointment scheduled successfully.");
+      setShowAddApptModal(false);
+      setApptDoctor("");
+      setApptHospital("");
+      setApptDepartment("");
+      setApptReason("");
+      setApptNotes("");
+      const [upcoming, history] = await Promise.all([
+        getUpcomingAppointments(targetPatient.id),
+        getAppointmentHistory(targetPatient.id).catch(() => []),
+      ]);
+      setUpcomingAppts(upcoming);
+      setApptHistory(history);
+    } catch (err: any) {
+      showMessage("Error", err.message || "Failed to schedule appointment");
+    } finally {
+      setSavingAppt(false);
+    }
+  };
+
+  const handleCancelAppointment = async (apptId: string) => {
+    if (patients.length === 0) return;
+    const targetPatient = patients[0];
+    try {
+      await cancelAppointment(apptId, targetPatient.id);
+      showMessage("Cancelled", "Doctor appointment has been cancelled.");
+      const [upcoming, history] = await Promise.all([
+        getUpcomingAppointments(targetPatient.id),
+        getAppointmentHistory(targetPatient.id).catch(() => []),
+      ]);
+      setUpcomingAppts(upcoming);
+      setApptHistory(history);
+    } catch (err: any) {
+      showMessage("Error", err.message || "Failed to cancel appointment");
     }
   };
 
@@ -883,6 +1084,20 @@ export default function CaregiverDashboardScreen({
           />
 
           <CareToolCard
+            icon="medication"
+            title="Medications & Adherence"
+            description="Manage prescriptions, dose schedules, and adherence rates."
+            onPress={handleOpenMedications}
+          />
+
+          <CareToolCard
+            icon="medical-services"
+            title="Doctor Appointments"
+            description="Schedule and track clinical visits, hospitals, and follow-ups."
+            onPress={handleOpenAppointments}
+          />
+
+          <CareToolCard
             icon="analytics"
             title="Care Intelligence & Adherence"
             description="Review AI-analyzed adherence patterns, risk assessment, and recommendations."
@@ -1309,6 +1524,608 @@ export default function CaregiverDashboardScreen({
                   </View>
                 ))
               )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================
+          CAREGIVER MEDICATION MANAGEMENT & ADHERENCE MODAL
+      ======================================================== */}
+      <Modal
+        visible={showMedicationModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowMedicationModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: "88%" }]}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleContainer}>
+                <View style={[styles.modalIcon, { backgroundColor: "#E7EFE3" }]}>
+                  <MaterialIcons name="medication" size={24} color={COLORS.primary} />
+                </View>
+                <View style={styles.modalTitleText}>
+                  <Text style={styles.modalTitle}>Medications & Adherence</Text>
+                  <Text style={styles.modalSubtitle}>
+                    {patients[0]?.name || "Patient"} Prescriptions & Doses
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                onPress={() => setShowMedicationModal(false)}
+                style={styles.closeButton}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+              >
+                <MaterialIcons name="close" size={24} color={COLORS.onSurface} />
+              </Pressable>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ padding: 16 }}>
+              {loadingMedications ? (
+                <View style={{ padding: 30, alignItems: "center" }}>
+                  <ActivityIndicator size="large" color={COLORS.primary} />
+                  <Text style={{ marginTop: 10, color: COLORS.onSurfaceVariant }}>Loading prescriptions...</Text>
+                </View>
+              ) : (
+                <>
+                  {/* Adherence Summary Card */}
+                  <View style={{ backgroundColor: "#F1F0E7", borderRadius: 14, padding: 14, marginBottom: 14 }}>
+                    <Text style={{ fontSize: 12, color: COLORS.onSurfaceVariant, fontWeight: "700" }}>30-DAY MEDICATION ADHERENCE</Text>
+                    <View style={{ flexDirection: "row", alignItems: "baseline", marginTop: 4, gap: 10 }}>
+                      <Text style={{ fontSize: 32, fontWeight: "900", color: COLORS.primary }}>
+                        {adherenceStats ? `${adherenceStats.adherenceRate}%` : "100%"}
+                      </Text>
+                      <View style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        borderRadius: 6,
+                        backgroundColor: (adherenceStats?.adherenceRate ?? 100) >= 80 ? "#E7EFE3" : "#FFDAD6"
+                      }}>
+                        <Text style={{
+                          fontSize: 11,
+                          fontWeight: "800",
+                          color: (adherenceStats?.adherenceRate ?? 100) >= 80 ? COLORS.primary : COLORS.error
+                        }}>
+                          {(adherenceStats?.adherenceRate ?? 100) >= 80 ? "ON TRACK" : "NEEDS ATTENTION"}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: "row", marginTop: 10, gap: 12 }}>
+                      <Text style={{ fontSize: 12, color: COLORS.onSurfaceVariant }}>
+                        Taken: <Text style={{ fontWeight: "700", color: COLORS.primary }}>{adherenceStats?.takenDoses ?? 0}</Text>
+                      </Text>
+                      <Text style={{ fontSize: 12, color: COLORS.onSurfaceVariant }}>
+                        Missed: <Text style={{ fontWeight: "700", color: COLORS.error }}>{adherenceStats?.missedDoses ?? 0}</Text>
+                      </Text>
+                      <Text style={{ fontSize: 12, color: COLORS.onSurfaceVariant }}>
+                        Total Scheduled: <Text style={{ fontWeight: "700", color: COLORS.onSurface }}>{adherenceStats?.totalEligibleDoses ?? 0}</Text>
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Header & Add Button */}
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <Text style={{ fontSize: 16, fontWeight: "800", color: COLORS.onSurface }}>
+                      Active Prescriptions ({medications.length})
+                    </Text>
+                    <Pressable
+                      onPress={() => setShowAddMedModal(true)}
+                      style={{
+                        backgroundColor: COLORS.primary,
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: 8,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
+                      <MaterialIcons name="add" size={18} color="#FFFFFF" />
+                      <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 13 }}>Add Med</Text>
+                    </Pressable>
+                  </View>
+
+                  {/* Medication List */}
+                  {medications.length === 0 ? (
+                    <View style={{ padding: 25, alignItems: "center" }}>
+                      <MaterialIcons name="medication" size={40} color={COLORS.outline} />
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: COLORS.onSurface, marginTop: 8 }}>No Active Prescriptions</Text>
+                      <Text style={{ fontSize: 12, color: COLORS.onSurfaceVariant, textAlign: "center", marginTop: 4 }}>
+                        Tap "+ Add Med" to schedule medications, food instructions, and reminders.
+                      </Text>
+                    </View>
+                  ) : (
+                    medications.map((med) => (
+                      <View
+                        key={med.id}
+                        style={{
+                          backgroundColor: COLORS.surface,
+                          borderRadius: 12,
+                          padding: 14,
+                          marginBottom: 10,
+                          borderWidth: 1,
+                          borderColor: COLORS.outlineVariant,
+                        }}
+                      >
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                              <Text style={{ fontSize: 16, fontWeight: "800", color: COLORS.onSurface }}>
+                                {med.name}
+                              </Text>
+                              <View style={{ backgroundColor: "#E7EFE3", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.primary }}>
+                                  {med.dosage} {med.unit}
+                                </Text>
+                              </View>
+                            </View>
+
+                            <Text style={{ fontSize: 12, color: COLORS.onSurfaceVariant, marginTop: 4 }}>
+                              Times: <Text style={{ fontWeight: "700" }}>{med.scheduledTimes.join(", ")}</Text> • {med.frequency.replace(/_/g, " ")}
+                            </Text>
+
+                            <Text style={{ fontSize: 12, color: COLORS.secondary, marginTop: 2 }}>
+                              Food: <Text style={{ fontWeight: "600" }}>{med.foodTiming.replace(/_/g, " ")}</Text>
+                              {med.prescribingDoctor ? ` • Dr. ${med.prescribingDoctor}` : ""}
+                            </Text>
+
+                            {med.instructions ? (
+                              <Text style={{ fontSize: 11, color: COLORS.outline, marginTop: 4, fontStyle: "italic" }}>
+                                "{med.instructions}"
+                              </Text>
+                            ) : null}
+                          </View>
+
+                          <Pressable
+                            onPress={() => handleDiscontinueMedication(med.id)}
+                            style={{ padding: 6 }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Discontinue medication"
+                          >
+                            <MaterialIcons name="delete-outline" size={20} color={COLORS.error} />
+                          </Pressable>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================
+          ADD MEDICATION SUB-MODAL
+      ======================================================== */}
+      <Modal
+        visible={showAddMedModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowAddMedModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: "85%" }]}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleContainer}>
+                <View style={[styles.modalIcon, { backgroundColor: "#E7EFE3" }]}>
+                  <MaterialIcons name="add" size={24} color={COLORS.primary} />
+                </View>
+                <View style={styles.modalTitleText}>
+                  <Text style={styles.modalTitle}>Add Medication</Text>
+                  <Text style={styles.modalSubtitle}>Prescription Details</Text>
+                </View>
+              </View>
+              <Pressable
+                onPress={() => setShowAddMedModal(false)}
+                style={styles.closeButton}
+                disabled={savingMed}
+              >
+                <MaterialIcons name="close" size={24} color={COLORS.onSurface} />
+              </Pressable>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ padding: 16 }}>
+              <Text style={styles.inputLabel}>Medicine Name *</Text>
+              <TextInput
+                value={medName}
+                onChangeText={setMedName}
+                placeholder="e.g. Amlodipine"
+                placeholderTextColor={COLORS.outline}
+                style={styles.patientCodeInput}
+              />
+
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Dosage *</Text>
+                  <TextInput
+                    value={medDosage}
+                    onChangeText={setMedDosage}
+                    placeholder="e.g. 5"
+                    placeholderTextColor={COLORS.outline}
+                    style={styles.patientCodeInput}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Unit</Text>
+                  <TextInput
+                    value={medUnit}
+                    onChangeText={setMedUnit}
+                    placeholder="mg, ml, tabs"
+                    placeholderTextColor={COLORS.outline}
+                    style={styles.patientCodeInput}
+                  />
+                </View>
+              </View>
+
+              <Text style={[styles.inputLabel, { marginTop: 10 }]}>Dose Times (24h, comma separated)</Text>
+              <TextInput
+                value={medTimes}
+                onChangeText={setMedTimes}
+                placeholder="e.g. 08:00, 20:00"
+                placeholderTextColor={COLORS.outline}
+                style={styles.patientCodeInput}
+              />
+
+              <Text style={[styles.inputLabel, { marginTop: 10 }]}>Food Timing</Text>
+              <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                {["AFTER_FOOD", "BEFORE_FOOD", "WITH_FOOD", "NO_RESTRICTION"].map((timing) => (
+                  <Pressable
+                    key={timing}
+                    onPress={() => setMedFoodTiming(timing)}
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                      backgroundColor: medFoodTiming === timing ? COLORS.primary : "#E7EFE3",
+                    }}
+                  >
+                    <Text style={{
+                      fontSize: 11,
+                      fontWeight: "700",
+                      color: medFoodTiming === timing ? "#FFFFFF" : COLORS.primary,
+                    }}>
+                      {timing.replace(/_/g, " ")}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={[styles.inputLabel, { marginTop: 10 }]}>Prescribing Doctor</Text>
+              <TextInput
+                value={medDoctor}
+                onChangeText={setMedDoctor}
+                placeholder="e.g. Dr. Rajesh Sharma"
+                placeholderTextColor={COLORS.outline}
+                style={styles.patientCodeInput}
+              />
+
+              <Text style={[styles.inputLabel, { marginTop: 10 }]}>Instructions (Optional)</Text>
+              <TextInput
+                value={medInstructions}
+                onChangeText={setMedInstructions}
+                placeholder="e.g. Take with a full glass of water"
+                placeholderTextColor={COLORS.outline}
+                style={styles.patientCodeInput}
+              />
+
+              <View style={[styles.modalButtons, { marginTop: 20, marginBottom: 20 }]}>
+                <Pressable
+                  onPress={() => setShowAddMedModal(false)}
+                  disabled={savingMed}
+                  style={styles.cancelButton}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={handleAddMedication}
+                  disabled={savingMed}
+                  style={styles.connectButton}
+                >
+                  {savingMed ? (
+                    <ActivityIndicator size="small" color={COLORS.onPrimary} />
+                  ) : (
+                    <Text style={styles.connectButtonText}>Save Medication</Text>
+                  )}
+                </Pressable>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================
+          CAREGIVER DOCTOR APPOINTMENTS MODAL
+      ======================================================== */}
+      <Modal
+        visible={showApptsModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowApptsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: "88%" }]}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleContainer}>
+                <View style={[styles.modalIcon, { backgroundColor: "#E9D7C5" }]}>
+                  <MaterialIcons name="medical-services" size={24} color={COLORS.secondary} />
+                </View>
+                <View style={styles.modalTitleText}>
+                  <Text style={styles.modalTitle}>Doctor Appointments</Text>
+                  <Text style={styles.modalSubtitle}>
+                    {patients[0]?.name || "Patient"} Consultations & History
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                onPress={() => setShowApptsModal(false)}
+                style={styles.closeButton}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+              >
+                <MaterialIcons name="close" size={24} color={COLORS.onSurface} />
+              </Pressable>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ padding: 16 }}>
+              {loadingAppts ? (
+                <View style={{ padding: 30, alignItems: "center" }}>
+                  <ActivityIndicator size="large" color={COLORS.secondary} />
+                  <Text style={{ marginTop: 10, color: COLORS.onSurfaceVariant }}>Loading appointments...</Text>
+                </View>
+              ) : (
+                <>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <Text style={{ fontSize: 16, fontWeight: "800", color: COLORS.onSurface }}>
+                      Upcoming Visits ({upcomingAppts.length})
+                    </Text>
+                    <Pressable
+                      onPress={() => setShowAddApptModal(true)}
+                      style={{
+                        backgroundColor: COLORS.secondary,
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: 8,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
+                      <MaterialIcons name="add" size={18} color="#FFFFFF" />
+                      <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 13 }}>Schedule Visit</Text>
+                    </Pressable>
+                  </View>
+
+                  {upcomingAppts.length === 0 ? (
+                    <View style={{ padding: 25, alignItems: "center" }}>
+                      <MaterialIcons name="event-available" size={40} color={COLORS.outline} />
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: COLORS.onSurface, marginTop: 8 }}>No Upcoming Appointments</Text>
+                      <Text style={{ fontSize: 12, color: COLORS.onSurfaceVariant, textAlign: "center", marginTop: 4 }}>
+                        Tap "Schedule Visit" to book upcoming clinical consultations.
+                      </Text>
+                    </View>
+                  ) : (
+                    upcomingAppts.map((appt) => (
+                      <View
+                        key={appt.id}
+                        style={{
+                          backgroundColor: COLORS.surface,
+                          borderRadius: 12,
+                          padding: 14,
+                          marginBottom: 10,
+                          borderLeftWidth: 4,
+                          borderLeftColor: COLORS.secondary,
+                          borderWidth: 1,
+                          borderColor: COLORS.outlineVariant,
+                        }}
+                      >
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                              <Text style={{ fontSize: 16, fontWeight: "800", color: COLORS.onSurface }}>
+                                {appt.doctorName}
+                              </Text>
+                              {appt.department ? (
+                                <View style={{ backgroundColor: "#E9D7C5", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                  <Text style={{ fontSize: 11, fontWeight: "700", color: COLORS.secondary }}>
+                                    {appt.department}
+                                  </Text>
+                                </View>
+                              ) : null}
+                            </View>
+
+                            <Text style={{ fontSize: 13, color: COLORS.onSurfaceVariant, marginTop: 4 }}>
+                              🏥 {appt.hospital}
+                            </Text>
+
+                            <Text style={{ fontSize: 13, color: COLORS.primary, marginTop: 2, fontWeight: "700" }}>
+                              📅 {new Date(appt.appointmentDate).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+                            </Text>
+
+                            <Text style={{ fontSize: 12, color: COLORS.onSurface, marginTop: 4 }}>
+                              Reason: <Text style={{ fontWeight: "600" }}>{appt.reason}</Text>
+                            </Text>
+
+                            {appt.notes ? (
+                              <Text style={{ fontSize: 11, color: COLORS.outline, marginTop: 2, fontStyle: "italic" }}>
+                                Note: {appt.notes}
+                              </Text>
+                            ) : null}
+                          </View>
+
+                          <Pressable
+                            onPress={() => handleCancelAppointment(appt.id)}
+                            style={{ padding: 6 }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Cancel appointment"
+                          >
+                            <MaterialIcons name="cancel" size={20} color={COLORS.error} />
+                          </Pressable>
+                        </View>
+                      </View>
+                    ))
+                  )}
+
+                  {apptHistory.length > 0 ? (
+                    <>
+                      <Text style={{ fontSize: 16, fontWeight: "800", color: COLORS.onSurface, marginTop: 14, marginBottom: 8 }}>
+                        Past Consultations
+                      </Text>
+                      {apptHistory.map((appt) => (
+                        <View
+                          key={appt.id}
+                          style={{
+                            backgroundColor: "#F9F8F5",
+                            borderRadius: 10,
+                            padding: 12,
+                            marginBottom: 8,
+                            borderWidth: 1,
+                            borderColor: COLORS.outlineVariant,
+                          }}
+                        >
+                          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                            <Text style={{ fontSize: 14, fontWeight: "700", color: COLORS.onSurface }}>{appt.doctorName} ({appt.hospital})</Text>
+                            <Text style={{ fontSize: 11, fontWeight: "700", color: appt.status === "COMPLETED" ? COLORS.primary : COLORS.error }}>
+                              {appt.status}
+                            </Text>
+                          </View>
+                          <Text style={{ fontSize: 11, color: COLORS.outline, marginTop: 2 }}>
+                            {new Date(appt.appointmentDate).toLocaleDateString([], { dateStyle: "medium" })} • {appt.reason}
+                          </Text>
+                        </View>
+                      ))}
+                    </>
+                  ) : null}
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================
+          SCHEDULE APPOINTMENT SUB-MODAL
+      ======================================================== */}
+      <Modal
+        visible={showAddApptModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowAddApptModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: "85%" }]}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleContainer}>
+                <View style={[styles.modalIcon, { backgroundColor: "#E9D7C5" }]}>
+                  <MaterialIcons name="add" size={24} color={COLORS.secondary} />
+                </View>
+                <View style={styles.modalTitleText}>
+                  <Text style={styles.modalTitle}>Schedule Doctor Visit</Text>
+                  <Text style={styles.modalSubtitle}>Clinical Appointment Details</Text>
+                </View>
+              </View>
+              <Pressable
+                onPress={() => setShowAddApptModal(false)}
+                style={styles.closeButton}
+                disabled={savingAppt}
+              >
+                <MaterialIcons name="close" size={24} color={COLORS.onSurface} />
+              </Pressable>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ padding: 16 }}>
+              <Text style={styles.inputLabel}>Doctor Name *</Text>
+              <TextInput
+                value={apptDoctor}
+                onChangeText={setApptDoctor}
+                placeholder="e.g. Dr. Anjali Mehta"
+                placeholderTextColor={COLORS.outline}
+                style={styles.patientCodeInput}
+              />
+
+              <Text style={[styles.inputLabel, { marginTop: 10 }]}>Hospital / Clinic *</Text>
+              <TextInput
+                value={apptHospital}
+                onChangeText={setApptHospital}
+                placeholder="e.g. Apollo Medical Center"
+                placeholderTextColor={COLORS.outline}
+                style={styles.patientCodeInput}
+              />
+
+              <Text style={[styles.inputLabel, { marginTop: 10 }]}>Department / Specialty</Text>
+              <TextInput
+                value={apptDepartment}
+                onChangeText={setApptDepartment}
+                placeholder="e.g. Cardiology, Neurology, General"
+                placeholderTextColor={COLORS.outline}
+                style={styles.patientCodeInput}
+              />
+
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Date (YYYY-MM-DD) *</Text>
+                  <TextInput
+                    value={apptDate}
+                    onChangeText={setApptDate}
+                    placeholder="2026-11-20"
+                    placeholderTextColor={COLORS.outline}
+                    style={styles.patientCodeInput}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Time (HH:mm) *</Text>
+                  <TextInput
+                    value={apptTime}
+                    onChangeText={setApptTime}
+                    placeholder="10:00"
+                    placeholderTextColor={COLORS.outline}
+                    style={styles.patientCodeInput}
+                  />
+                </View>
+              </View>
+
+              <Text style={[styles.inputLabel, { marginTop: 10 }]}>Reason for Visit *</Text>
+              <TextInput
+                value={apptReason}
+                onChangeText={setApptReason}
+                placeholder="e.g. Routine blood pressure and heart review"
+                placeholderTextColor={COLORS.outline}
+                style={styles.patientCodeInput}
+              />
+
+              <Text style={[styles.inputLabel, { marginTop: 10 }]}>Clinical Notes (Optional)</Text>
+              <TextInput
+                value={apptNotes}
+                onChangeText={setApptNotes}
+                placeholder="e.g. Bring latest ECG report"
+                placeholderTextColor={COLORS.outline}
+                style={styles.patientCodeInput}
+              />
+
+              <View style={[styles.modalButtons, { marginTop: 20, marginBottom: 20 }]}>
+                <Pressable
+                  onPress={() => setShowAddApptModal(false)}
+                  disabled={savingAppt}
+                  style={styles.cancelButton}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={handleAddAppointment}
+                  disabled={savingAppt}
+                  style={[styles.connectButton, { backgroundColor: COLORS.secondary }]}
+                >
+                  {savingAppt ? (
+                    <ActivityIndicator size="small" color={COLORS.onPrimary} />
+                  ) : (
+                    <Text style={styles.connectButtonText}>Schedule Visit</Text>
+                  )}
+                </Pressable>
+              </View>
             </ScrollView>
           </View>
         </View>

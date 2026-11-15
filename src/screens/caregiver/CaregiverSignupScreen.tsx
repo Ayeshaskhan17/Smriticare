@@ -15,9 +15,10 @@ import {
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { caregiverSignup } from "../../services/auth";
+import { saveAuthSession } from "../../services/authStorage";
 
 type CaregiverSignupScreenProps = {
-    onSignup: () => void;
+    onSignup: (token?: string) => void;
     onLogin: () => void;
     onBack?: () => void;
 };
@@ -96,24 +97,30 @@ export default function CaregiverSignupScreen({
         try {
             setLoading(true);
 
-            await caregiverSignup(
+            const result = await caregiverSignup(
                 cleanName,
                 cleanEmail,
                 password,
             );
 
+            await saveAuthSession(result.token, "caregiver");
+
             setLoading(false);
 
-            Alert.alert(
-                "Account Created",
-                "Your caregiver account has been created successfully.",
-                [
-                    {
-                        text: "Continue",
-                        onPress: onSignup,
-                    },
-                ],
-            );
+            if (Platform.OS === "web") {
+                onSignup(result.token);
+            } else {
+                Alert.alert(
+                    "Account Created",
+                    "Your caregiver account has been created successfully.",
+                    [
+                        {
+                            text: "Continue",
+                            onPress: () => onSignup(result.token),
+                        },
+                    ],
+                );
+            }
         } catch (error) {
             setLoading(false);
 

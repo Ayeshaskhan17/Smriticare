@@ -1,1 +1,13 @@
-export const API_BASE_URL = "http://43.204.221.160:5000";
+import { Platform } from "react-native";
+
+function getApiBaseUrl(): string {
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+  if (Platform.OS === "web" && typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin;
+  }
+  return "http://localhost:5000";
+}
+
+export const API_BASE_URL = getApiBaseUrl();

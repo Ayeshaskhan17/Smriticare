@@ -1,6 +1,6 @@
 import { Alert, ActivityIndicator } from "react-native";
 import { patientLogin } from "../../services/api";
-import { saveToken } from "../../services/authStorage";
+import { saveAuthSession, saveToken } from "../../services/authStorage";
 import React, { useState } from 'react';
 import {
   Image,
@@ -17,7 +17,7 @@ import {
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 type LoginScreenProps = {
-  onLogin: () => void;
+  onLogin: (token?: string) => void;
   onSignup: () => void;
   onBack?: () => void;
   onCaregiver?: () => void;
@@ -69,11 +69,11 @@ export default function LoginScreen({
         throw new Error("Login succeeded but no authentication token was returned.");
       }
 
-      await saveToken(result.token);
+      await saveAuthSession(result.token, "patient");
 
       setLoading(false);
 
-      onLogin();
+      onLogin(result.token);
     } catch (error) {
       setLoading(false);
 

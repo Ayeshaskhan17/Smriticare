@@ -59,6 +59,7 @@ import CaregiverDashboardScreen from "./src/screens/caregiver/CaregiverDashboard
 import CaregiverProfileScreen from "./src/screens/caregiver/CaregiverProfileScreen";
 import CaregiverAlertsScreen from "./src/screens/caregiver/CaregiverAlertsScreen";
 import CaregiverRemindersScreen from "./src/screens/caregiver/CaregiverRemindersScreen";
+import CognitiveProgressScreen from "./src/screens/caregiver/CognitiveProgressScreen";
 
 // ============================================================
 // SERVICES
@@ -169,6 +170,7 @@ type Screen =
   | "caregiver-profile"
   | "caregiver-alerts"
   | "caregiver-reminders"
+  | "caregiver-cognitive-progress"
 
   // ----------------------------------------------------------
   // Game screens
@@ -445,6 +447,14 @@ function AppContent() {
           token,
           "patient",
         );
+        await restorePatientSession(token);
+        return;
+      }
+
+      const storedToken = await getToken();
+      if (storedToken) {
+        await restorePatientSession(storedToken);
+        return;
       }
 
       setScreen("home");
@@ -471,6 +481,14 @@ function AppContent() {
           token,
           "patient",
         );
+        await restorePatientSession(token);
+        return;
+      }
+
+      const storedToken = await getToken();
+      if (storedToken) {
+        await restorePatientSession(storedToken);
+        return;
       }
 
       setScreen("home");
@@ -713,7 +731,33 @@ function AppContent() {
         onProfile={() => {
           setScreen("caregiver-profile");
         }}
+        onCognitiveProgress={() => {
+          setScreen("caregiver-cognitive-progress");
+        }}
         onLogout={handleLogout}
+      />
+    );
+  }
+
+  // ============================================================
+  // CAREGIVER COGNITIVE PROGRESS
+  // ============================================================
+
+  if (screen === "caregiver-cognitive-progress") {
+    return (
+      <CognitiveProgressScreen
+        onBack={() => {
+          setScreen("caregiver-dashboard");
+        }}
+        onHome={() => {
+          setScreen("caregiver-dashboard");
+        }}
+        onSchedule={() => {
+          setScreen("caregiver-reminders");
+        }}
+        onProfile={() => {
+          setScreen("caregiver-profile");
+        }}
       />
     );
   }

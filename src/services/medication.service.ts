@@ -121,6 +121,14 @@ export async function deleteMedication(id: string, patientId?: string): Promise<
   });
 }
 
+export async function discontinueMedication(id: string, patientId?: string): Promise<Medication> {
+  const query = patientId ? `?patientId=${encodeURIComponent(patientId)}` : "";
+  const data = await authenticatedFetch(`/api/medications/${id}/discontinue${query}`, {
+    method: "POST",
+  });
+  return data.medication;
+}
+
 export async function getTodayMedicationSchedule(date?: string, patientId?: string): Promise<DoseRecord[]> {
   const params = new URLSearchParams();
   if (date) params.append("date", date);

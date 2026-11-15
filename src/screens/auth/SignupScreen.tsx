@@ -15,7 +15,7 @@ import {
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { patientSignup } from "../../services/api";
-import { saveToken } from "../../services/authStorage";
+import { saveAuthSession, saveToken } from "../../services/authStorage";
 
 type SignupScreenProps = {
   onSignup: (token?: string) => void;
@@ -145,20 +145,24 @@ export default function SignupScreen({
           cleanLanguage || undefined,
       });
 
-      await saveToken(result.token);
+      await saveAuthSession(result.token, "patient");
 
       setLoading(false);
 
-      Alert.alert(
-        "Account Created",
-        "Your SmritiCare patient account has been created successfully.",
-        [
-          {
-            text: "Continue",
-            onPress: () => onSignup(result.token),
-          },
-        ],
-      );
+      if (Platform.OS === "web") {
+        onSignup(result.token);
+      } else {
+        Alert.alert(
+          "Account Created",
+          "Your SmritiCare patient account has been created successfully.",
+          [
+            {
+              text: "Continue",
+              onPress: () => onSignup(result.token),
+            },
+          ],
+        );
+      }
     } catch (error) {
       setLoading(false);
 
